@@ -152,6 +152,21 @@ class HealthAndStatusHandler(BaseHTTPRequestHandler):
             return
         super().log_message(format, *args)
 
+def self_pinger():
+    """Pings external Render URL every 8 minutes to prevent container spin-down/sleep."""
+    time.sleep(60)
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://antigravity-remote-cr0d.onrender.com").rstrip("/")
+    log(f"Self-pinger started for URL: {render_url}")
+    import urllib.request
+    while True:
+        try:
+            req = urllib.request.Request(f"{render_url}/healthz", headers={"User-Agent": "RenderSelfPinger/1.0"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                log(f"Self-ping successful: {resp.status}")
+        except Exception as e:
+            log(f"Self-ping note: {e}")
+        time.sleep(480)
+
 def main():
     port = int(os.environ.get("PORT", 10000))
     log(f"Starting server on port {port}...")
@@ -161,6 +176,9 @@ def main():
 
     t_watch = threading.Thread(target=watchdog_loop, daemon=True)
     t_watch.start()
+
+    t_ping = threading.Thread(target=self_pinger, daemon=True)
+    t_ping.start()
 
     server = HTTPServer(("0.0.0.0", port), HealthAndStatusHandler)
     server.serve_forever()

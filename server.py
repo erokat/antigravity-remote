@@ -39,7 +39,8 @@ def get_daemon_status():
             text=True,
             timeout=10
         )
-        return res.stdout.strip() or res.stderr.strip()
+        out = res.stdout.strip() or res.stderr.strip()
+        return out
     except Exception as e:
         return f"Error checking status: {e}"
 
@@ -47,7 +48,7 @@ def restart_daemon():
     log(f"Restarting remote-control daemon as '{INSTANCE_NAME}'...")
     try:
         subprocess.run(["agy", "remote-control", "stop"], capture_output=True, timeout=10)
-        time.sleep(1)
+        time.sleep(2)
         res = subprocess.run(
             ["agy", "remote-control", "start", "--name", INSTANCE_NAME],
             capture_output=True,
@@ -62,17 +63,23 @@ def restart_daemon():
 
 def watchdog_loop():
     """Ensures the remote-control daemon stays active continuously."""
-    time.sleep(10)
+    time.sleep(30) # Initial grace period
+    consecutive_failures = 0
     while True:
         try:
             status = get_daemon_status()
-            if "inactive" in status.lower() or "not running" in status.lower():
-                log(f"Watchdog detected inactive daemon ({status}). Restarting...")
-                restart_daemon()
-            time.sleep(20)
+            if "inactive" in status.lower() or "not running" in status.lower() or "error" in status.lower():
+                consecutive_failures += 1
+                if consecutive_failures >= 2:
+                    log(f"Watchdog detected inactive daemon ({status}). Restarting...")
+                    restart_daemon()
+                    consecutive_failures = 0
+            else:
+                consecutive_failures = 0
+            time.sleep(25)
         except Exception as e:
             log(f"Watchdog exception: {e}")
-            time.sleep(20)
+            time.sleep(25)
 
 class HealthAndStatusHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -155,7 +162,7 @@ class HealthAndStatusHandler(BaseHTTPRequestHandler):
 def self_pinger():
     """Pings external Render URL every 8 minutes to prevent container spin-down/sleep."""
     time.sleep(60)
-    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://antigravity-remote-cr0d.onrender.com").rstrip("/")
+    render_url = os.environ.get("RENDER_EXTERNAL_URL", "https://antigravity-remote-89e9.onrender.com").rstrip("/")
     log(f"Self-pinger started for URL: {render_url}")
     import urllib.request
     while True:

@@ -3,50 +3,39 @@ set -e
 
 echo "[RENDER AGY] Starting clean Antigravity CLI Remote Control..."
 
-# 1. Machine ID setup
-mkdir -p /var/lib/dbus
-if [ ! -f /etc/machine-id ]; then
-    dbus-uuidgen > /etc/machine-id 2>/dev/null || echo "c1072a29b2d5477a8df39ab04f3177c8" > /etc/machine-id
-fi
-cp -f /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null || true
+# 1. Disable D-Bus and Keyring so agy uses direct file-based storage
+unset DBUS_SESSION_BUS_ADDRESS
+unset SSH_AUTH_SOCK
+export AGY_DISABLE_KEYRING=1
+export PYTHONUNBUFFERED=1
 
-# 2. D-Bus session
-if command -v dbus-launch >/dev/null 2>&1; then
-    eval $(dbus-launch --sh-syntax 2>/dev/null || true)
-    export DBUS_SESSION_BUS_ADDRESS
-    echo "[RENDER AGY] D-Bus session initialized: $DBUS_SESSION_BUS_ADDRESS"
-fi
+# 2. Prepare directories
+mkdir -p /root/.gemini/antigravity-cli \
+         /root/.gemini/antigravity-cli/presence \
+         /root/.config/antigravity \
+         /root/.config/antigravity-cli \
+         /root/.antigravity \
+         /workspace
 
-# 3. Keyring daemon
-if command -v gnome-keyring-daemon >/dev/null 2>&1; then
-    eval $(echo "" | gnome-keyring-daemon --unlock 2>/dev/null || true)
-    eval $(gnome-keyring-daemon --start 2>/dev/null || true)
-    export SSH_AUTH_SOCK
-    echo "[RENDER AGY] Keyring daemon started."
-fi
-
-# 4. Prepare directories
-mkdir -p /root/.gemini/antigravity-cli /root/.config/antigravity /root/.config/antigravity-cli /workspace
-
-# 5. Restore clean OAuth token
+# 3. Restore OAuth token
 if [ -n "$ANTIGRAVITY_TOKEN_BASE64" ]; then
-    echo "[RENDER AGY] Restoring OAuth token..."
+    echo "[RENDER AGY] Restoring fresh OAuth token..."
     echo "$ANTIGRAVITY_TOKEN_BASE64" | base64 -d > /root/.gemini/antigravity-cli/antigravity-oauth-token
     chmod 600 /root/.gemini/antigravity-cli/antigravity-oauth-token
     
-    # Mirror token to fallback locations
-    for d in /root/.gemini /root/.config/antigravity /root/.config/antigravity-cli; do
+    # Mirror token across all possible CLI paths
+    for d in /root/.gemini /root/.config/antigravity /root/.config/antigravity-cli /root/.antigravity; do
         mkdir -p "$d"
         cp -f /root/.gemini/antigravity-cli/antigravity-oauth-token "$d/antigravity-oauth-token"
         cp -f /root/.gemini/antigravity-cli/antigravity-oauth-token "$d/jetski-standalone-oauth-token"
     done
     cp -f /root/.gemini/antigravity-cli/antigravity-oauth-token /root/.gemini/antigravity-cli/jetski-standalone-oauth-token
-    echo "[RENDER AGY] OAuth token configured."
+    echo "[RENDER AGY] OAuth token configured in all paths."
 else
     echo "[RENDER AGY] ERROR: ANTIGRAVITY_TOKEN_BASE64 is empty!"
 fi
 
-# 6. Generate 100% clean settings.json (NO external bot paths!)
+# 4. Generate complete settings.json
 cat << 'EOF' > /root/.gemini/antigravity-cli/settings.json
 {
   "allowNonWorkspaceAccess": true,
@@ -60,11 +49,34 @@ cat << 'EOF' > /root/.gemini/antigravity-cli/settings.json
 EOF
 cp -f /root/.gemini/antigravity-cli/settings.json /root/.config/antigravity/settings.json
 
-# 7. Generate clean state files
+# 5. Generate complete jetski_state.pbtxt (Full onboarding bypass)
 cat << 'EOF' > /root/.gemini/antigravity-cli/jetski_state.pbtxt
+post_onboarding: {
+  completed_steps: POST_ONBOARDING_STEP_TYPE_MANAGER_WELCOME
+  completed_steps: POST_ONBOARDING_STEP_TYPE_USAGE_MODE
+  completed_steps: POST_ONBOARDING_STEP_TYPE_AGENT_CONFIGURATION
+  completed_steps: POST_ONBOARDING_STEP_TYPE_ADD_WORKSPACE
+}
+seen_nuxs: {
+  uids: 51
+  uids: 48
+  uids: 24
+}
 agent_onboarding_completed: AGENT_ONBOARDING_STATE_COMPLETED
 last_selected_agent_model: MODEL_PLACEHOLDER_M319
 installation_uuid: "e0de5235-b2d5-477a-8df3-9ab04f3177c8"
+migrations: {
+  key: 3
+  value: MIGRATION_STATUS_COMPLETED
+}
+migrations: {
+  key: 4
+  value: MIGRATION_STATUS_COMPLETED
+}
+migrations: {
+  key: 5
+  value: MIGRATION_STATUS_COMPLETED
+}
 EOF
 cp -f /root/.gemini/antigravity-cli/jetski_state.pbtxt /root/.config/antigravity/jetski_state.pbtxt
 
@@ -74,23 +86,19 @@ cp -f /root/.gemini/antigravity-cli/installation_id /root/.config/antigravity/in
 export CASCADE_DEFAULT_MODEL_OVERRIDE="Gemini 3.8 Flash (Medium)"
 export AGY_MODEL="gemini-3.8-flash-medium"
 
-# 8. Workspace setup
+# 6. Workspace setup
 cat << 'EOF' > /workspace/README.md
 # Remote Workspace
 Cloud Antigravity environment running on Render.
 Model: Gemini 3.8 Flash (Medium)
 EOF
 
-# 9. Verify CLI
-which agy || true
-agy --version || true
-
-# 10. Start remote-control daemon
+# 7. Start remote-control daemon
 INSTANCE_NAME="${REMOTE_INSTANCE_NAME:-Render-Cloud-AGY}"
 echo "[RENDER AGY] Starting remote-control daemon with name: $INSTANCE_NAME..."
 agy remote-control start --name "$INSTANCE_NAME" || true
 agy remote-control status || true
 
-# 11. Run background server on port 10000 with streaming logs & watchdog
+# 8. Start background healthcheck and watchdog server
 echo "[RENDER AGY] Starting server on port 10000..."
 exec python3 /server.py

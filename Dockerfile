@@ -16,12 +16,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dbus-x11 \
     libsecret-1-0 \
     gnome-keyring \
+    rclone \
     && rm -rf /var/lib/apt/lists/*
 
 # Install official Antigravity CLI flat binary
 RUN curl -fsSL https://antigravity.google/cli/install.sh | bash -s -- -d /usr/local/bin || true
 RUN if [ ! -f /usr/local/bin/agy ] && [ -f /root/.local/bin/agy ]; then cp /root/.local/bin/agy /usr/local/bin/agy; fi || true
 RUN chmod +x /usr/local/bin/agy 2>/dev/null || true
+
+# Preinstall userbot Python dependencies
+RUN pip3 install --no-cache-dir telethon pillow cryptg requests
 
 WORKDIR /workspace
 

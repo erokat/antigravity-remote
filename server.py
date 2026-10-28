@@ -3,7 +3,7 @@ import sys
 import time
 import subprocess
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 
 DAEMON_LOG_PATH = "/root/.gemini/antigravity-cli/antigravity-cli-daemon.log"
 INSTANCE_NAME = os.environ.get("REMOTE_INSTANCE_NAME", "Render-Cloud-AGY")
@@ -223,7 +223,7 @@ def main():
     t_ping = threading.Thread(target=self_pinger, daemon=True)
     t_ping.start()
 
-    server = HTTPServer(("0.0.0.0", port), HealthAndStatusHandler)
+    server = ThreadingHTTPServer(("0.0.0.0", port), HealthAndStatusHandler)
     server.serve_forever()
 
 if __name__ == "__main__":

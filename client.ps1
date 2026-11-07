@@ -343,14 +343,24 @@ try {
                 $json = $items | ConvertTo-Json -Depth 2
                 $out = [System.Text.Encoding]::UTF8.GetBytes($json)
             }
-            elseif ($action -eq '/read') {
-                $fileItem = Get-Item -LiteralPath $path -ErrorAction Stop
-                if ($fileItem.Length -gt 10485760) {
-                    $res.StatusCode = 413
-                    $out = [System.Text.Encoding]::UTF8.GetBytes("Error: File exceeds 10MB limit")
-                } else {
-                    $out = [System.IO.File]::ReadAllBytes($path)
+            elseif ( -eq '/read') {
+                 = Get-Item -LiteralPath  -ErrorAction Stop
+                .ContentType = "application/octet-stream"
+        if ( -ne ) {
+            .ContentLength64 = .Length
+            .OutputStream.Write(, 0, .Length)
+        }
+                try {
+                     = New-Object byte[] 65536
+                    while (( = .Read(, 0, .Length)) -gt 0) {
+                        .OutputStream.Write(, 0, )
+                    }
                 }
+                finally {
+                    .Close()
+                    .Dispose()
+                }
+                 = 
             }
             elseif ($action -eq '/write' -and $req.HttpMethod -eq 'POST') {
                 $content = [System.Text.Encoding]::UTF8.GetString($bodyBytes)

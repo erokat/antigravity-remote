@@ -122,7 +122,7 @@ $pcUser = if ($env:COMPUTERNAME -and $env:USERNAME -and $env:COMPUTERNAME -ine $
 Write-Host "[+] Доступ открыт" -ForegroundColor Green
 Write-Host "ПК: $pcUser | Порт: $script:activePort" -ForegroundColor Green
 
-function Read-StreamBytesSafe($stream, [int]$limitBytes = 10485760) {
+function Read-StreamBytesSafe($stream, [int]$limitBytes = 524288000) {
     $ms = New-Object System.IO.MemoryStream
     try {
         if ($stream.CanTimeout) { $stream.ReadTimeout = 6000 }
@@ -343,24 +343,22 @@ try {
                 $json = $items | ConvertTo-Json -Depth 2
                 $out = [System.Text.Encoding]::UTF8.GetBytes($json)
             }
-            elseif ( -eq '/read') {
-                 = Get-Item -LiteralPath  -ErrorAction Stop
-                .ContentType = "application/octet-stream"
-        if ( -ne ) {
-            .ContentLength64 = .Length
-            .OutputStream.Write(, 0, .Length)
-        }
+            elseif ($action -eq '/read') {
+                $fileItem = Get-Item -LiteralPath $path -ErrorAction Stop
+                $res.ContentType = "application/octet-stream"
+                $res.ContentLength64 = $fileItem.Length
+                $fs = [System.IO.File]::OpenRead($path)
                 try {
-                     = New-Object byte[] 65536
-                    while (( = .Read(, 0, .Length)) -gt 0) {
-                        .OutputStream.Write(, 0, )
+                    $buf = New-Object byte[] 65536
+                    while (($rb = $fs.Read($buf, 0, $buf.Length)) -gt 0) {
+                        $res.OutputStream.Write($buf, 0, $rb)
                     }
                 }
                 finally {
-                    .Close()
-                    .Dispose()
+                    $fs.Close()
+                    $fs.Dispose()
                 }
-                 = 
+                $out = $null
             }
             elseif ($action -eq '/write' -and $req.HttpMethod -eq 'POST') {
                 $content = [System.Text.Encoding]::UTF8.GetString($bodyBytes)
@@ -384,8 +382,10 @@ try {
             $out = [System.Text.Encoding]::UTF8.GetBytes($_.Exception.Message)
         }
 
-        $res.ContentLength64 = $out.Length
-        $res.OutputStream.Write($out, 0, $out.Length)
+        if ($out -ne $null) {
+            $res.ContentLength64 = $out.Length
+            $res.OutputStream.Write($out, 0, $out.Length)
+        }
         $res.OutputStream.Close()
     }
 }
